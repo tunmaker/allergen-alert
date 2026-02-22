@@ -16,6 +16,8 @@ from sensors.pms5003 import PMS5003Sensor
 from sensors.scd40 import SCD40Sensor
 from sensors.bme680 import BME680Sensor
 from sensors.tsl2591 import TSL2591Sensor
+from utils.health_check import SensorHealthMonitor
+from utils.data_aggregation import TemperatureAggregator, HumidityAggregator
 
 # Load environment variables
 load_dotenv()
@@ -50,6 +52,13 @@ class AllergenAlertDaemon:
         self.tsl2591 = None
         self.pms5003 = None
 
+        # Health monitoring
+        self.health_monitor = SensorHealthMonitor(max_consecutive_errors=5)
+
+        # Data aggregation
+        self.temp_aggregator = TemperatureAggregator(use_offsets=True)
+        self.humidity_aggregator = HumidityAggregator()
+
         # Configuration
         self.device_id = os.getenv("DEVICE_ID", "rpi_main")
         self.device_name = os.getenv("PI_HOSTNAME", "Raspberry Pi Air Quality Monitor")
@@ -59,12 +68,14 @@ class AllergenAlertDaemon:
         )
         self.pm_sensor_interval = int(os.getenv("PM_SENSOR_INTERVAL", 300))
         self.sound_sensor_interval = int(os.getenv("SOUND_SENSOR_INTERVAL", 60))
+        self.health_check_interval = int(os.getenv("HEALTH_CHECK_INTERVAL", 600))
 
         # Last read times
         self.last_simple_sensor_read = 0
         self.last_air_quality_read = 0
         self.last_pm_read = 0
         self.last_sound_read = 0
+        self.last_health_check = 0
 
     def initialize(self) -> bool:
         """Initialize all components."""
@@ -132,6 +143,11 @@ class AllergenAlertDaemon:
             self._read_pm_sensor()
             self.last_pm_read = now
 
+        # Health check (periodic monitoring)
+        if now - self.last_health_check >= self.health_check_interval:
+            self._perform_health_check()
+            self.last_health_check = now
+
     def _read_simple_sensors(self):
         """Read BME680 and TSL2591."""
         # BME680
@@ -139,21 +155,28 @@ class AllergenAlertDaemon:
             try:
                 data = self.bme680.read()
                 if data:
+                    self.health_monitor.record_successful_read("bme680")
                     self.mqtt_client.publish_data("temperature_bme680", data["temperature"])
                     self.mqtt_client.publish_data("humidity_bme680", data["humidity"])
                     self.mqtt_client.publish_data("pressure", data["pressure"])
                     self.mqtt_client.publish_data("gas_resistance", data["gas_resistance"])
+                    # Add to aggregators
+                    self.temp_aggregator.add_reading("temperature_bme680", data["temperature"])
+                    self.humidity_aggregator.add_reading("humidity_bme680", data["humidity"])
             except Exception as e:
                 logger.error(f"Error reading BME680: {e}")
+                self.health_monitor.record_error("bme680", str(e))
 
         # TSL2591
         if self.tsl2591:
             try:
                 data = self.tsl2591.read()
                 if data:
+                    self.health_monitor.record_successful_read("tsl2591")
                     self.mqtt_client.publish_data("light", data["lux"])
             except Exception as e:
                 logger.error(f"Error reading TSL2591: {e}")
+                self.health_monitor.record_error("tsl2591", str(e))
 
     def _read_air_quality_sensors(self):
         """Read AHT21, ENS160, SCD40."""
@@ -162,16 +185,22 @@ class AllergenAlertDaemon:
             try:
                 data = self.aht21.read()
                 if data:
+                    self.health_monitor.record_successful_read("aht21")
                     self.mqtt_client.publish_data("temperature", data["temperature"])
                     self.mqtt_client.publish_data("humidity", data["humidity"])
+                    # Add to aggregators (AHT21 is reference, no offset)
+                    self.temp_aggregator.add_reading("temperature", data["temperature"])
+                    self.humidity_aggregator.add_reading("humidity", data["humidity"])
             except Exception as e:
                 logger.error(f"Error reading AHT21: {e}")
+                self.health_monitor.record_error("aht21", str(e))
 
         # ENS160
         if self.ens160:
             try:
                 data = self.ens160.read()
                 if data:
+                    self.health_monitor.record_successful_read("ens160")
                     self.mqtt_client.publish_data("aqi", data["aqi"])
                     self.mqtt_client.publish_data("tvoc", data["tvoc"])
                     self.mqtt_client.publish_data("eco2", data["eco2"])
@@ -181,16 +210,27 @@ class AllergenAlertDaemon:
                     )
             except Exception as e:
                 logger.error(f"Error reading ENS160: {e}")
+                self.health_monitor.record_error("ens160", str(e))
 
         # SCD40
         if self.scd40:
             try:
                 data = self.scd40.read()
                 if data:
+                    self.health_monitor.record_successful_read("scd40")
                     self.mqtt_client.publish_data("co2", data["co2"])
+                    # Add temperature reading if available (SCD40 includes temperature)
+                    if "temperature" in data:
+                        self.temp_aggregator.add_reading("temperature_scd40", data["temperature"])
+                    if "humidity" in data:
+                        self.humidity_aggregator.add_reading("humidity_scd40", data["humidity"])
                     logger.debug(f"SCD40: CO2={data['co2']} ppm")
             except Exception as e:
                 logger.error(f"Error reading SCD40: {e}")
+                self.health_monitor.record_error("scd40", str(e))
+
+        # Publish temperature and humidity consensus
+        self._publish_sensor_consensus()
 
     def _read_pm_sensor(self):
         """Read PMS5003."""
@@ -198,6 +238,7 @@ class AllergenAlertDaemon:
             try:
                 data = self.pms5003.read()
                 if data:
+                    self.health_monitor.record_successful_read("pms5003")
                     self.mqtt_client.publish_data("pm1_0", data["pm1_0"])
                     self.mqtt_client.publish_data("pm2_5", data["pm2_5"])
                     self.mqtt_client.publish_data("pm10", data["pm10"])
@@ -207,6 +248,7 @@ class AllergenAlertDaemon:
                     )
             except Exception as e:
                 logger.error(f"Error reading PMS5003: {e}")
+                self.health_monitor.record_error("pms5003", str(e))
 
     def run(self):
         """Main event loop."""
@@ -228,6 +270,37 @@ class AllergenAlertDaemon:
             except Exception as e:
                 logger.error(f"Error in main loop: {e}", exc_info=True)
                 time.sleep(5)  # Wait before retrying
+
+    def _publish_sensor_consensus(self):
+        """Publish temperature and humidity consensus."""
+        # Temperature consensus
+        consensus_temp = self.temp_aggregator.get_consensus_temperature()
+        if consensus_temp is not None:
+            self.mqtt_client.publish_data("temperature_consensus", consensus_temp)
+            logger.debug(f"Published temperature consensus: {consensus_temp}°C")
+
+        # Humidity consensus
+        consensus_humidity = self.humidity_aggregator.get_consensus_humidity()
+        if consensus_humidity is not None:
+            self.mqtt_client.publish_data("humidity_consensus", consensus_humidity)
+            logger.debug(f"Published humidity consensus: {consensus_humidity}%")
+
+        # Clear aggregators for next reading
+        self.temp_aggregator.clear()
+        self.humidity_aggregator.clear()
+
+    def _perform_health_check(self):
+        """Perform periodic health check of sensors."""
+        logger.info("Performing health check...")
+        logger.info(self.health_monitor.get_status_report())
+
+        # Publish health status to MQTT
+        unhealthy = self.health_monitor.get_unhealthy_sensors()
+        if unhealthy:
+            logger.warning(f"Unhealthy sensors: {', '.join(unhealthy)}")
+            self.mqtt_client.publish_data("unhealthy_sensors", ",".join(unhealthy))
+        else:
+            self.mqtt_client.publish_data("unhealthy_sensors", "none")
 
     def stop(self):
         """Stop the daemon gracefully."""
