@@ -18,6 +18,13 @@ from sensors.bme680 import BME680Sensor
 from sensors.tsl2591 import TSL2591Sensor
 from utils.health_check import SensorHealthMonitor
 from utils.data_aggregation import TemperatureAggregator, HumidityAggregator
+from utils.calibration import CalibrationManager, ENS160BurnInTracker, SCD40CalibrationTracker
+from utils.data_processing import (
+    MovingAverageFilter,
+    AQICalculator,
+    MultiSensorAQI,
+)
+from utils.duty_cycle import PMS5003DutyCycleManager, DutyCycleScheduler
 
 # Load environment variables
 load_dotenv()
@@ -58,6 +65,17 @@ class AllergenAlertDaemon:
         # Data aggregation
         self.temp_aggregator = TemperatureAggregator(use_offsets=True)
         self.humidity_aggregator = HumidityAggregator()
+
+        # Phase 3: Calibration and optimization
+        self.calibration_manager = CalibrationManager()
+        self.ens160_tracker = None  # Initialized in initialize()
+        self.scd40_tracker = None  # Initialized in initialize()
+        self.pms5003_duty_cycle = None  # Initialized in initialize()
+        self.duty_cycle_scheduler = None  # Initialized in initialize()
+
+        # Data processing
+        self.pm_moving_average = MovingAverageFilter(window_size=5)
+        self.multi_sensor_aqi = MultiSensorAQI()
 
         # Configuration
         self.device_id = os.getenv("DEVICE_ID", "rpi_main")
@@ -122,6 +140,22 @@ class AllergenAlertDaemon:
             logger.error(f"Error initializing sensors: {e}")
             return False
 
+        # Initialize Phase 3 components (calibration and optimization)
+        logger.info("Initializing calibration and optimization...")
+        try:
+            self.ens160_tracker = ENS160BurnInTracker(self.calibration_manager)
+            self.scd40_tracker = SCD40CalibrationTracker(self.calibration_manager)
+            self.pms5003_duty_cycle = PMS5003DutyCycleManager(
+                pattern=os.getenv("PMS5003_DUTY_CYCLE_PATTERN", "extended")
+            )
+            self.duty_cycle_scheduler = DutyCycleScheduler(self.pms5003_duty_cycle)
+            logger.info("Calibration and optimization initialized")
+            logger.info(self.ens160_tracker.get_status_report())
+            logger.info(self.pms5003_duty_cycle.get_status_report())
+        except Exception as e:
+            logger.error(f"Error initializing Phase 3 components: {e}")
+            return False
+
         return True
 
     def read_sensors(self):
@@ -136,6 +170,7 @@ class AllergenAlertDaemon:
         # Air quality sensors (high frequency: AHT21, ENS160, SCD40)
         if now - self.last_air_quality_read >= self.air_quality_sensor_interval:
             self._read_air_quality_sensors()
+            self._publish_aqi()  # Publish comprehensive AQI after reading sensors
             self.last_air_quality_read = now
 
         # PM sensor (low frequency due to duty cycle)
@@ -204,9 +239,20 @@ class AllergenAlertDaemon:
                     self.mqtt_client.publish_data("aqi", data["aqi"])
                     self.mqtt_client.publish_data("tvoc", data["tvoc"])
                     self.mqtt_client.publish_data("eco2", data["eco2"])
+
+                    # Track ENS160 burn-in status
+                    if self.ens160_tracker:
+                        accuracy = self.ens160_tracker.get_accuracy_level()
+                        progress = self.ens160_tracker.get_burn_in_progress()
+                        self.mqtt_client.publish_data("ens160_accuracy", accuracy)
+                        self.mqtt_client.publish_data("ens160_burn_in_progress", progress)
+
+                    # Update multi-sensor AQI with TVOC
+                    self.multi_sensor_aqi.update(tvoc=data["tvoc"])
+
                     logger.debug(
                         f"ENS160: AQI={data['aqi']}, eCO2={data['eco2']} ppm, "
-                        f"TVOC={data['tvoc']} ppb ({data['burn_in_status']})"
+                        f"TVOC={data['tvoc']} ppb (accuracy: {self.ens160_tracker.get_accuracy_level() if self.ens160_tracker else 'unknown'})"
                     )
             except Exception as e:
                 logger.error(f"Error reading ENS160: {e}")
@@ -218,13 +264,27 @@ class AllergenAlertDaemon:
                 data = self.scd40.read()
                 if data:
                     self.health_monitor.record_successful_read("scd40")
-                    self.mqtt_client.publish_data("co2", data["co2"])
+                    co2 = data["co2"]
+                    self.mqtt_client.publish_data("co2", co2)
+
+                    # Track SCD40 calibration status
+                    if self.scd40_tracker:
+                        if self.scd40_tracker.needs_recalibration():
+                            logger.warning(
+                                "SCD40 needs fresh air exposure for calibration. "
+                                "Expose to outdoor air for 10-15 minutes."
+                            )
+
                     # Add temperature reading if available (SCD40 includes temperature)
                     if "temperature" in data:
                         self.temp_aggregator.add_reading("temperature_scd40", data["temperature"])
                     if "humidity" in data:
                         self.humidity_aggregator.add_reading("humidity_scd40", data["humidity"])
-                    logger.debug(f"SCD40: CO2={data['co2']} ppm")
+
+                    # Update multi-sensor AQI with CO2
+                    self.multi_sensor_aqi.update(co2=co2)
+
+                    logger.debug(f"SCD40: CO2={co2:.0f} ppm")
             except Exception as e:
                 logger.error(f"Error reading SCD40: {e}")
                 self.health_monitor.record_error("scd40", str(e))
@@ -233,18 +293,42 @@ class AllergenAlertDaemon:
         self._publish_sensor_consensus()
 
     def _read_pm_sensor(self):
-        """Read PMS5003."""
+        """Read PMS5003 with duty cycle management and moving average filtering."""
+        # Check duty cycle state change
+        if self.duty_cycle_scheduler:
+            self.duty_cycle_scheduler.check_and_log_state_change()
+
+        # Only read if laser is on
+        if self.pms5003_duty_cycle and not self.pms5003_duty_cycle.should_laser_be_on():
+            logger.debug("PMS5003 laser in rest mode, skipping read")
+            return
+
         if self.pms5003:
             try:
                 data = self.pms5003.read()
                 if data:
                     self.health_monitor.record_successful_read("pms5003")
+
+                    # Apply moving average filter to smooth noisy PM data
+                    pm1_avg = self.pm_moving_average.add_reading(data["pm1_0"])
+                    pm2_5 = data["pm2_5"]
+                    pm10 = data["pm10"]
+
+                    # Publish raw readings
                     self.mqtt_client.publish_data("pm1_0", data["pm1_0"])
-                    self.mqtt_client.publish_data("pm2_5", data["pm2_5"])
-                    self.mqtt_client.publish_data("pm10", data["pm10"])
+                    self.mqtt_client.publish_data("pm2_5", pm2_5)
+                    self.mqtt_client.publish_data("pm10", pm10)
+
+                    # Publish smoothed PM1.0 if filter is ready
+                    if self.pm_moving_average.is_ready():
+                        self.mqtt_client.publish_data("pm1_0_smoothed", pm1_avg)
+
+                    # Update multi-sensor AQI with PM2.5
+                    self.multi_sensor_aqi.update(pm2_5=pm2_5)
+
                     logger.debug(
-                        f"PMS5003: PM1.0={data['pm1_0']}, PM2.5={data['pm2_5']}, "
-                        f"PM10={data['pm10']} µg/m³"
+                        f"PMS5003: PM1.0={data['pm1_0']:.1f}, PM2.5={pm2_5:.1f}, "
+                        f"PM10={pm10:.1f} µg/m³"
                     )
             except Exception as e:
                 logger.error(f"Error reading PMS5003: {e}")
@@ -301,6 +385,25 @@ class AllergenAlertDaemon:
             self.mqtt_client.publish_data("unhealthy_sensors", ",".join(unhealthy))
         else:
             self.mqtt_client.publish_data("unhealthy_sensors", "none")
+
+        # Publish calibration and optimization status
+        if self.ens160_tracker:
+            logger.info(self.ens160_tracker.get_status_report())
+
+        if self.scd40_tracker:
+            days_since = self.scd40_tracker.get_days_since_calibration()
+            if days_since is not None:
+                self.mqtt_client.publish_data("scd40_days_since_calibration", days_since)
+
+        if self.pms5003_duty_cycle:
+            logger.info(self.pms5003_duty_cycle.get_status_report())
+
+    def _publish_aqi(self):
+        """Publish comprehensive AQI information."""
+        overall_aqi = self.multi_sensor_aqi.calculate_overall_aqi()
+        if overall_aqi is not None:
+            self.mqtt_client.publish_data("overall_aqi", overall_aqi)
+            logger.debug(f"Published overall AQI: {overall_aqi}")
 
     def stop(self):
         """Stop the daemon gracefully."""
