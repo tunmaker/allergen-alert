@@ -1,0 +1,392 @@
+{
+  "dashboard": {
+    "title": "Allergen Alert - Air Quality Monitoring",
+    "tags": ["air-quality", "environmental", "sensors"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Air Quality Index (AQI) - Current",
+        "type": "gauge",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_overall_aqi_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 50},
+                {"color": "orange", "value": 100},
+                {"color": "red", "value": 150},
+                {"color": "purple", "value": 200}
+              ]
+            },
+            "max": 500,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Temperature - Consensus",
+        "type": "gauge",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_temperature_consensus_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "°C",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "blue", "value": 15},
+                {"color": "green", "value": 20},
+                {"color": "yellow", "value": 24},
+                {"color": "red", "value": 28}
+              ]
+            },
+            "max": 40,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Humidity - Consensus",
+        "type": "gauge",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_humidity_consensus_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "%",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 30},
+                {"color": "yellow", "value": 60},
+                {"color": "red", "value": 80}
+              ]
+            },
+            "max": 100,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "CO2 Levels",
+        "type": "gauge",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_co2_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ppm",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 600},
+                {"color": "orange", "value": 1000},
+                {"color": "red", "value": 1500}
+              ]
+            },
+            "max": 2000,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "PM2.5 Levels (24h)",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_pm2_5_state",
+            "legendDisplayMode": "list"
+          },
+          {
+            "refId": "B",
+            "target": "home_rpi_aq_pm1_0_smoothed_state",
+            "legendDisplayMode": "list"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "µg/m³",
+            "color": {
+              "mode": "palette-classic"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 12},
+                {"color": "orange", "value": 35},
+                {"color": "red", "value": 55}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Temperature Variance (3 Sensors)",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_temperature_state",
+            "legendDisplayMode": "list"
+          },
+          {
+            "refId": "B",
+            "target": "home_rpi_aq_temperature_bme680_state",
+            "legendDisplayMode": "list"
+          },
+          {
+            "refId": "C",
+            "target": "home_rpi_aq_temperature_scd40_state",
+            "legendDisplayMode": "list"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "°C",
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "ENS160 Burn-in Progress",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 16
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_ens160_burn_in_progress_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "%",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 50},
+                {"color": "green", "value": 100}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "ENS160 Accuracy Level",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 16
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_ens160_accuracy_state"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Air Quality Indicators (24h)",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_co2_state",
+            "legendDisplayMode": "list"
+          },
+          {
+            "refId": "B",
+            "target": "home_rpi_aq_tvoc_state",
+            "legendDisplayMode": "list"
+          },
+          {
+            "refId": "C",
+            "target": "home_rpi_aq_eco2_state",
+            "legendDisplayMode": "list"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Light Intensity",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_light_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "lux",
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Sensor Health Status",
+        "type": "table",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 28
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_unhealthy_sensors_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "lineHeight": 1.3
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "PM2.5 Health Impact",
+        "type": "stat",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 28
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "target": "home_rpi_aq_pm2_5_state"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "µg/m³",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0, "text": "Good"},
+                {"color": "yellow", "value": 12, "text": "Moderate"},
+                {"color": "orange", "value": 35, "text": "Unhealthy for Sensitive Groups"},
+                {"color": "red", "value": 55, "text": "Unhealthy"},
+                {"color": "purple", "value": 150, "text": "Very Unhealthy"}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "templating": {
+      "list": []
+    },
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "timepicker": {}
+  }
+}

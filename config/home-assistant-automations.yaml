@@ -1,0 +1,439 @@
+# Home Assistant Automation Templates for Allergen Alert
+# Add these automations to your Home Assistant configuration.yaml or create a separate file
+# and include it with: !include config/home-assistant-automations.yaml
+
+# ============================================================================
+# TEMPERATURE CONTROL AUTOMATIONS
+# ============================================================================
+
+automation climate_heating_low_temperature:
+  alias: "Climate: Enable Heating - Low Temperature"
+  description: "Enable heating when temperature drops below 18°C"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.temperature_consensus
+    below: 18
+    for:
+      minutes: 5  # Only trigger if sustained for 5 minutes
+  condition:
+    - condition: time
+      after: "06:00:00"
+      before: "23:00:00"
+  action:
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.living_room  # Change to your climate entity
+      data:
+        temperature: 21
+        hvac_mode: heat
+    - service: notify.mobile_app  # Change to your notification service
+      data:
+        title: "Temperature Alert"
+        message: "Temperature low ({{ states('sensor.temperature_consensus') }}°C) - Heating enabled"
+
+automation climate_cooling_high_temperature:
+  alias: "Climate: Enable Cooling - High Temperature"
+  description: "Enable cooling when temperature exceeds 26°C"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.temperature_consensus
+    above: 26
+    for:
+      minutes: 5
+  action:
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.living_room
+      data:
+        temperature: 23
+        hvac_mode: cool
+    - service: notify.mobile_app
+      data:
+        title: "Temperature Alert"
+        message: "Temperature high ({{ states('sensor.temperature_consensus') }}°C) - Cooling enabled"
+
+automation climate_humidity_target:
+  alias: "Climate: Maintain Target Humidity"
+  description: "Adjust humidity setpoint based on current readings"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.humidity_consensus
+    above: 65
+    for:
+      minutes: 10
+  action:
+    - service: climate.set_humidity
+      target:
+        entity_id: climate.living_room
+      data:
+        humidity: 50
+    - service: notify.mobile_app
+      data:
+        title: "Humidity Control"
+        message: "High humidity ({{ states('sensor.humidity_consensus') }}%) - Target set to 50%"
+
+# ============================================================================
+# VENTILATION CONTROL AUTOMATIONS
+# ============================================================================
+
+automation ventilation_high_co2_open:
+  alias: "Ventilation: Open Windows - High CO2"
+  description: "Open smart window/ventilation when CO2 exceeds 1000 ppm"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.co2_scd40
+    above: 1000
+    for:
+      minutes: 5
+  action:
+    - service: cover.open_cover
+      target:
+        entity_id: cover.living_room_window  # Change to your cover/window entity
+    - service: switch.turn_on  # Turn on ventilation fan
+      target:
+        entity_id: switch.ventilation_fan
+    - service: notify.mobile_app
+      data:
+        title: "Ventilation Alert"
+        message: "CO2 high ({{ states('sensor.co2_scd40') }}ppm) - Opening windows and ventilation"
+        data:
+          color: "orange"
+
+automation ventilation_co2_normal_close:
+  alias: "Ventilation: Close Windows - CO2 Normal"
+  description: "Close windows when CO2 returns to normal levels (< 600 ppm)"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.co2_scd40
+    below: 600
+    for:
+      minutes: 10
+  action:
+    - service: cover.close_cover
+      target:
+        entity_id: cover.living_room_window
+    - service: switch.turn_off
+      target:
+        entity_id: switch.ventilation_fan
+    - service: notify.mobile_app
+      data:
+        title: "Ventilation"
+        message: "CO2 normalized ({{ states('sensor.co2_scd40') }}ppm) - Closing windows"
+
+automation ventilation_poor_air_quality:
+  alias: "Ventilation: Boost - Poor Air Quality"
+  description: "Maximum ventilation when AQI exceeds 100"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.overall_aqi
+    above: 100
+    for:
+      minutes: 3
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.ventilation_fan_boost
+    - service: cover.open_cover
+      target:
+        entity_id: cover.living_room_window
+    - service: automation.turn_on
+      target:
+        entity_id: automation.ventilation_co2_normal_close
+    - service: notify.mobile_app
+      data:
+        title: "Poor Air Quality Alert"
+        message: "AQI is {{ states('sensor.overall_aqi') }} - Maximum ventilation activated"
+        data:
+          color: "red"
+
+automation ventilation_nighttime_close:
+  alias: "Ventilation: Close at Night"
+  description: "Close windows automatically at night (10 PM) if weather is clear"
+  trigger:
+    platform: time
+    at: "22:00:00"
+  condition:
+    - condition: state
+      entity_id: weather.home  # Change to your weather entity
+      state:
+        - "clear"
+        - "sunny"
+  action:
+    - service: cover.close_cover
+      target:
+        entity_id: cover.living_room_window
+    - service: switch.turn_off
+      target:
+        entity_id: switch.ventilation_fan
+
+# ============================================================================
+# AIR PURIFIER CONTROL AUTOMATIONS
+# ============================================================================
+
+automation air_purifier_start_high_pm:
+  alias: "Air Purifier: Start - High PM2.5"
+  description: "Turn on air purifier when PM2.5 exceeds 35 µg/m³"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.pm2_5
+    above: 35
+    for:
+      minutes: 2
+  action:
+    - service: fan.turn_on
+      target:
+        entity_id: fan.air_purifier  # Change to your fan/purifier entity
+    - service: fan.set_percentage
+      target:
+        entity_id: fan.air_purifier
+      data:
+        percentage: 75  # High speed
+    - service: notify.mobile_app
+      data:
+        title: "Air Quality Alert"
+        message: "PM2.5 high ({{ states('sensor.pm2_5') }}µg/m³) - Air purifier started (high speed)"
+        data:
+          color: "orange"
+
+automation air_purifier_medium_pm:
+  alias: "Air Purifier: Medium Speed - Moderate PM2.5"
+  description: "Set purifier to medium when PM2.5 is 12-35 µg/m³"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.pm2_5
+    above: 12
+    below: 35
+    for:
+      minutes: 5
+  action:
+    - service: fan.turn_on
+      target:
+        entity_id: fan.air_purifier
+    - service: fan.set_percentage
+      target:
+        entity_id: fan.air_purifier
+      data:
+        percentage: 50  # Medium speed
+    - service: notify.mobile_app
+      data:
+        title: "Air Quality"
+        message: "PM2.5 moderate ({{ states('sensor.pm2_5') }}µg/m³) - Air purifier set to medium"
+
+automation air_purifier_stop_clean_air:
+  alias: "Air Purifier: Stop - Air Clean"
+  description: "Turn off air purifier when PM2.5 drops below 12 µg/m³"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.pm2_5
+    below: 12
+    for:
+      minutes: 15  # Wait 15 minutes before stopping
+  action:
+    - service: fan.turn_off
+      target:
+        entity_id: fan.air_purifier
+    - service: notify.mobile_app
+      data:
+        title: "Air Quality Good"
+        message: "PM2.5 clean ({{ states('sensor.pm2_5') }}µg/m³) - Air purifier stopped"
+
+automation air_purifier_tvoc_alert:
+  alias: "Air Purifier: Max Speed - High TVOC"
+  description: "Maximum speed when TVOC exceeds 300 ppb (strong odors detected)"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.tvoc
+    above: 300
+    for:
+      minutes: 2
+  action:
+    - service: fan.turn_on
+      target:
+        entity_id: fan.air_purifier
+    - service: fan.set_percentage
+      target:
+        entity_id: fan.air_purifier
+      data:
+        percentage: 100  # Maximum speed
+    - service: notify.mobile_app
+      data:
+        title: "Air Quality Alert - VOCs Detected"
+        message: "High TVOC ({{ states('sensor.tvoc') }}ppb) detected - Air purifier at maximum"
+        data:
+          color: "red"
+
+# ============================================================================
+# COMBINED CLIMATE & AIR QUALITY AUTOMATIONS
+# ============================================================================
+
+automation climate_air_quality_response:
+  alias: "Climate: Full Response to Poor Air Quality"
+  description: "Comprehensive response when AQI exceeds 150 (very unhealthy)"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.overall_aqi
+    above: 150
+    for:
+      minutes: 3
+  action:
+    # Maximize ventilation
+    - service: switch.turn_on
+      target:
+        entity_id: switch.ventilation_fan_boost
+    - service: cover.open_cover
+      target:
+        entity_id: cover.living_room_window
+
+    # Run air purifier at maximum
+    - service: fan.turn_on
+      target:
+        entity_id: fan.air_purifier
+    - service: fan.set_percentage
+      target:
+        entity_id: fan.air_purifier
+      data:
+        percentage: 100
+
+    # Adjust climate to fresh air mode
+    - service: climate.set_hvac_mode
+      target:
+        entity_id: climate.living_room
+      data:
+        hvac_mode: "fan_only"
+
+    # Alert user
+    - service: notify.mobile_app
+      data:
+        title: "CRITICAL: Very Poor Air Quality"
+        message: "AQI {{ states('sensor.overall_aqi') }} - All air quality systems at maximum"
+        data:
+          color: "red"
+          priority: "high"
+
+automation climate_optimal_conditions:
+  alias: "Climate: Optimize for Optimal Conditions"
+  description: "Set ideal climate when air quality is good (AQI < 50)"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.overall_aqi
+    below: 50
+    for:
+      minutes: 10
+  condition:
+    - condition: time
+      after: "06:00:00"
+      before: "23:00:00"
+  action:
+    # Close windows to maintain indoor air quality
+    - service: cover.close_cover
+      target:
+        entity_id: cover.living_room_window
+    - service: switch.turn_off
+      target:
+        entity_id: switch.ventilation_fan
+
+    # Set optimal temperature
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.living_room
+      data:
+        temperature: 22
+        humidity: 50
+
+    # Turn off air purifier if not needed
+    - service: fan.turn_off
+      target:
+        entity_id: fan.air_purifier
+
+    - service: notify.mobile_app
+      data:
+        title: "Air Quality Optimal"
+        message: "Air quality is good! Climate system optimized for comfort"
+        data:
+          color: "green"
+
+# ============================================================================
+# SENSOR HEALTH & MAINTENANCE AUTOMATIONS
+# ============================================================================
+
+automation sensor_health_warning:
+  alias: "Alert: Sensor Health Issue Detected"
+  description: "Notify when any sensor becomes unhealthy"
+  trigger:
+    platform: state
+    entity_id: sensor.unhealthy_sensors
+    to: "none"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Sensor Health Alert"
+        message: "Unhealthy sensors detected: {{ states('sensor.unhealthy_sensors') }}"
+        notification_id: "sensor_health_alert"
+
+automation ens160_calibration_reminder:
+  alias: "Maintenance: ENS160 Calibration in Progress"
+  description: "Daily reminder during ENS160 7-day burn-in period"
+  trigger:
+    platform: time
+    at: "09:00:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.ens160_burn_in_progress
+      below: 100
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "ENS160 Calibration Progress"
+        message: "ENS160 burn-in at {{ states('sensor.ens160_burn_in_progress') }}% accuracy"
+
+automation scd40_calibration_needed:
+  alias: "Maintenance: SCD40 Fresh Air Exposure Needed"
+  description: "Alert when SCD40 needs fresh air exposure for calibration"
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.scd40_days_since_calibration
+    above: 7
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "SCD40 Calibration Needed"
+        message: "CO2 sensor needs fresh air exposure. Take to outdoors for 10-15 minutes"
+        data:
+          priority: "high"
+
+# ============================================================================
+# SCHEDULED MAINTENANCE AUTOMATIONS
+# ============================================================================
+
+automation daily_air_quality_summary:
+  alias: "Daily: Air Quality Summary"
+  description: "Send daily summary of air quality at 8 AM"
+  trigger:
+    platform: time
+    at: "08:00:00"
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "Daily Air Quality Summary"
+        message: |
+          Current AQI: {{ states('sensor.overall_aqi') }}
+          PM2.5: {{ states('sensor.pm2_5') }} µg/m³
+          CO2: {{ states('sensor.co2_scd40') }} ppm
+          Temperature: {{ states('sensor.temperature_consensus') }}°C
+          Humidity: {{ states('sensor.humidity_consensus') }}%
+
+automation weekly_sensor_health_check:
+  alias: "Weekly: Sensor Health Report"
+  description: "Weekly sensor health check"
+  trigger:
+    platform: time
+    weekday: "sun"
+    at: "18:00:00"
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "Weekly Sensor Health Report"
+        message: |
+          Unhealthy Sensors: {{ states('sensor.unhealthy_sensors') }}
+          ENS160 Accuracy: {{ states('sensor.ens160_accuracy') }}
+          SCD40 Calibration Age: {{ states('sensor.scd40_days_since_calibration') }} days
