@@ -1,0 +1,24 @@
+[Unit]
+Description=Allergen Alert - Air Quality Monitor
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=allergen-alert
+WorkingDirectory=/opt/allergen-alert
+ExecStart=/usr/bin/python3 /opt/allergen-alert/src/main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/allergen-alert.log
+StandardError=append:/var/log/allergen-alert.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log /opt/allergen-alert
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+# Core MQTT and serialization
+paho-mqtt==1.7.1
+PyYAML==6.0.1
+
+# I2C and sensor libraries
+smbus2==0.4.2
+adafruit-circuitpython-bme680==3.8.5
+adafruit-circuitpython-tsl2591==1.4.5
+adafruit-circuitpython-am2320==2.0.4
+
+# Serial communication for PMS5003
+pyserial==3.5
+
+# Data processing
+numpy==1.26.4
+python-dotenv==1.0.1
+
+# Optional: for advanced data processing
+scipy==1.14.1
+
+# Development and testing
+pytest==8.3.2
+pytest-cov==5.0.0
+black==24.10.0
+flake8==7.1.1
