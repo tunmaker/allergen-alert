@@ -1,0 +1,191 @@
+# Home Assistant MQTT Sensor Configuration for Allergen Alert
+# Add these to your Home Assistant configuration.yaml or create a separate file
+# and include it with: !include config/home-assistant-sensors.yaml
+
+# Note: Home Assistant can also auto-discover sensors via MQTT discovery
+# if you have MQTT integration enabled with discovery: true
+
+# Enable MQTT integration (add to configuration.yaml if not already present)
+mqtt:
+  broker: !secret mqtt_broker
+  port: 8883
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  tls_version: tlsv1_2
+  discovery: true
+  discovery_prefix: homeassistant
+
+# If you prefer manual sensor configuration instead of auto-discovery:
+# Uncomment the sections below and adjust as needed
+
+# sensor:
+#   # Temperature Sensors
+#   - platform: mqtt
+#     name: "Temperature (AHT21)"
+#     state_topic: "home/rpi_aq/temperature/state"
+#     unit_of_measurement: "°C"
+#     device_class: temperature
+#     icon: "mdi:thermometer"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "Temperature (BME680)"
+#     state_topic: "home/rpi_aq/temperature_bme680/state"
+#     unit_of_measurement: "°C"
+#     device_class: temperature
+#     icon: "mdi:thermometer"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "Temperature (SCD40)"
+#     state_topic: "home/rpi_aq/temperature_scd40/state"
+#     unit_of_measurement: "°C"
+#     device_class: temperature
+#     icon: "mdi:thermometer"
+#     value_template: "{{ value }}"
+#
+#   # Humidity Sensors
+#   - platform: mqtt
+#     name: "Humidity (AHT21)"
+#     state_topic: "home/rpi_aq/humidity/state"
+#     unit_of_measurement: "%"
+#     device_class: humidity
+#     icon: "mdi:water-percent"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "Humidity (BME680)"
+#     state_topic: "home/rpi_aq/humidity_bme680/state"
+#     unit_of_measurement: "%"
+#     device_class: humidity
+#     icon: "mdi:water-percent"
+#     value_template: "{{ value }}"
+#
+#   # Pressure
+#   - platform: mqtt
+#     name: "Atmospheric Pressure"
+#     state_topic: "home/rpi_aq/pressure/state"
+#     unit_of_measurement: "hPa"
+#     device_class: pressure
+#     icon: "mdi:gauge"
+#     value_template: "{{ value }}"
+#
+#   # Particulate Matter
+#   - platform: mqtt
+#     name: "PM1.0"
+#     state_topic: "home/rpi_aq/pm1_0/state"
+#     unit_of_measurement: "µg/m³"
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "PM2.5"
+#     state_topic: "home/rpi_aq/pm2_5/state"
+#     unit_of_measurement: "µg/m³"
+#     device_class: pm25
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "PM10"
+#     state_topic: "home/rpi_aq/pm10/state"
+#     unit_of_measurement: "µg/m³"
+#     device_class: pm10
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   # CO2
+#   - platform: mqtt
+#     name: "CO2 (SCD40)"
+#     state_topic: "home/rpi_aq/co2/state"
+#     unit_of_measurement: "ppm"
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   # Air Quality
+#   - platform: mqtt
+#     name: "Estimated CO2 (ENS160)"
+#     state_topic: "home/rpi_aq/eco2/state"
+#     unit_of_measurement: "ppm"
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "TVOC"
+#     state_topic: "home/rpi_aq/tvoc/state"
+#     unit_of_measurement: "ppb"
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   - platform: mqtt
+#     name: "Air Quality Index"
+#     state_topic: "home/rpi_aq/aqi/state"
+#     unit_of_measurement: "AQI"
+#     device_class: aqi
+#     icon: "mdi:air-filter"
+#     value_template: "{{ value }}"
+#
+#   # Light
+#   - platform: mqtt
+#     name: "Light Intensity"
+#     state_topic: "home/rpi_aq/light/state"
+#     unit_of_measurement: "lux"
+#     icon: "mdi:lightbulb"
+#     value_template: "{{ value }}"
+#
+#   # Gas Resistance
+#   - platform: mqtt
+#     name: "Gas Resistance"
+#     state_topic: "home/rpi_aq/gas_resistance/state"
+#     unit_of_measurement: "Ω"
+#     icon: "mdi:gas-cylinder"
+#     value_template: "{{ value }}"
+
+# Example Automations
+# automation:
+#   - id: "high_pm25_alert"
+#     alias: "High PM2.5 Alert"
+#     trigger:
+#       platform: numeric_state
+#       entity_id: sensor.pm2_5
+#       above: 35  # µg/m³
+#     action:
+#       service: notify.mobile_app
+#       data:
+#         message: "PM2.5 is {{ states('sensor.pm2_5') }} µg/m³ - Consider improving ventilation"
+#
+#   - id: "high_co2_alert"
+#     alias: "High CO2 Alert"
+#     trigger:
+#       platform: numeric_state
+#       entity_id: sensor.co2_scd40
+#       above: 1000  # ppm
+#     action:
+#       service: notify.mobile_app
+#       data:
+#         message: "CO2 is {{ states('sensor.co2_scd40') }} ppm - Open a window!"
+
+# Example Groups for Dashboard
+# group:
+#   air_quality:
+#     name: "Air Quality"
+#     entities:
+#       - sensor.air_quality_index
+#       - sensor.estimated_co2_ens160
+#       - sensor.tvoc
+#       - sensor.co2_scd40
+#
+#   environmental:
+#     name: "Environmental"
+#     entities:
+#       - sensor.temperature_aht21
+#       - sensor.humidity_aht21
+#       - sensor.atmospheric_pressure
+#       - sensor.light_intensity
+#
+#   particulates:
+#     name: "Particulate Matter"
+#     entities:
+#       - sensor.pm1_0
+#       - sensor.pm2_5
+#       - sensor.pm10
